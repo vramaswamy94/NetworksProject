@@ -1,0 +1,4 @@
+- implement req time based fairness
+- prediction
+- flowlets to packets - try both fairness policies
+- packet traces
