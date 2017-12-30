@@ -1,6 +1,8 @@
 import sys
 import random
 from request import Request
+import numpy
+import math
 
 ##
 # each packet record is of the form 
@@ -8,7 +10,7 @@ from request import Request
 ##
 class InputGen:
     
-    def __init__(self, max_requests, num_nodes, mean_arrival_rate, mean_size, mean_prediction_delay):
+    def __init__(self, max_requests, num_nodes, mean_arrival_rate, mean_size, mean_prediction_delay, interarrival_distribution, flowlet_mode):
         self.max_requests = max_requests
         self.num_nodes = num_nodes
         self.mean_arrival_rate = mean_arrival_rate
@@ -16,19 +18,55 @@ class InputGen:
         self.mean_prediction_delay = mean_prediction_delay
         self.current_time = 0
         self.id = 0
-   
+        self.interarrival_distribution = interarrival_distribution
+        self.flowlet_mode = flowlet_mode
+        self.req_iat = 1.0/self.mean_arrival_rate
+
+        if self.interarrival_distribution == "exponential":
+            self.iats_list = numpy.random.exponential(self.req_iat, max_requests)
+        else:
+            self.iats_list = numpy.random.lognormal(math.log(self.req_iat), 1, max_requests)
+        
+        self.on_period_durations = numpy.random.lognormal(math.log(self.req_iat*10), 1, max_requests)
+        self.off_period_durations = numpy.random.lognormal(math.log(self.req_iat*10), 1, max_requests)
+        self.on_off_durations = []
+        for i in range(max_requests):
+            self.on_off_durations.append(self.on_period_durations[i])
+            self.on_off_durations.append(self.off_period_durations[i])
+        self.on_off_times = numpy.cumsum(self.on_off_durations)
+        self.period_idx = 0
+
     def generate_next_request(self):
-        inter_arrival_t = random.expovariate(self.mean_arrival_rate)
+        assert(self.period_idx % 2 == 0)
+
+        inter_arrival_t = self.iats_list[self.id]
         src = random.randint(1, self.num_nodes)
         dest = src
         while src == dest:
             dest = random.randint(1, self.num_nodes)
         size = random.randint(1, 2*self.mean_size)
+
+        jump_time = 0
+        if self.current_time + inter_arrival_t > self.on_off_times[self.period_idx]:
+            #print "new slot at packet", self.id, self.current_time, self.current_time+inter_arrival_t, self.on_off_times[self.period_idx]
+            #end of on period
+            inter_arrival_t = self.on_off_times[self.period_idx]-self.current_time
+            jump_time = self.on_off_times[self.period_idx+1]
+            self.period_idx += 2
+
         self.current_time += inter_arrival_t
         self.id += 1
         prediction_delay = random.uniform(0, self.mean_prediction_delay*2)
         prediction_time = max(0, (self.current_time - prediction_delay))
-        return (self.id, self.current_time, src, dest, size, prediction_time) 
+        if self.flowlet_mode:
+            pckt = (self.id, self.current_time, src, dest, size, prediction_time) 
+        else:
+            pckt = (self.id, self.current_time, src, dest, 1, prediction_time) 
+
+        if jump_time != 0:
+            self.current_time = jump_time
+
+        return pckt
 
     def generate_requests(self, timeslot):
         requests = []
@@ -68,7 +106,7 @@ def convert_to_request_objects(reqArray):
     return reqObjs
 
 def generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot):
-    gen = InputGen(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay)
+    gen = InputGen(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, "lognormal", False)
     req_list = gen.generate_requests(timeslot)
     gen.check_stats(req_list)
     request_objs = convert_to_request_objects(req_list)
