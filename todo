@@ -1,4 +1,11 @@
-- implement req time based fairness
-- prediction
+- implement req time based fairness 
+- prediction - done
+	- implement 1 bit predictor
+	- change stats
+- check inputs for flowlets
+	- adjust request times
+	- 
+
 - flowlets to packets - try both fairness policies
-- packet traces
+
+- packet traces - done
