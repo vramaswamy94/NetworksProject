@@ -3,6 +3,10 @@ from Queue import *
 from fastpass import Matching
 import copy
 from operator import itemgetter
+import random
+import numpy
+random.seed(3453452)
+numpy.random.seed(234231)
 
 stats = {}
 
@@ -119,12 +123,13 @@ def priority_arbiter(request_objs, timeslot, num_nodes):
     assert(sum_admitted_cnt == len(request_objs))
 
 def main():
-    max_requests = 100
-    num_nodes = 16 
-    mean_arrival_rate = 20
+    max_requests = 10000
+    num_nodes = 16
+    mean_arrival_rate = 1000
     mean_size = 4 
     mean_pred_delay = 10
     timeslot = 1
+
 
     request_objs, request_list = generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot)
     max_requests = len(request_list)

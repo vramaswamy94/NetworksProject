@@ -29,9 +29,11 @@ class InputGen:
             self.iats_list = numpy.random.exponential(self.req_iat, max_requests)
         else:
             self.iats_list = numpy.random.lognormal(math.log(self.req_iat), 1, max_requests)
-        
+       
         self.on_period_durations = numpy.random.lognormal(math.log(self.req_iat*ON_PERIOD_FACTOR), 1, max_requests)
         self.off_period_durations = numpy.random.lognormal(math.log(self.req_iat*OFF_PERIOD_FACTOR), 1, max_requests)
+        # generating max_requests on/off periods is overkill
+
         self.on_off_durations = []
         for i in range(max_requests):
             self.on_off_durations.append(self.on_period_durations[i])
@@ -51,15 +53,18 @@ class InputGen:
         self.flowlet_length = {}
         self.acc_flowlet_length = {}
         self.flowlet_count = {}
+        self.flowlet_packet_ids = {}
         for i in range(self.num_nodes+1):
             self.flowlet_length[i] = {}
             self.acc_flowlet_length[i] = {}
             self.flowlet_count[i] = {}
+            self.flowlet_packet_ids[i] = {}
             for j in range(self.num_nodes+1):
                 self.flowlet_length[i][j] = 0
                 self.acc_flowlet_length[i][j] = 0
                 self.flowlet_count[i][j] = 0
-    
+                self.flowlet_packet_ids[i][j] = []
+
     def reset_flowlet_request_times(self):
         for i in range(self.num_nodes+1):
             for j in range(self.num_nodes+1):
@@ -69,9 +74,14 @@ class InputGen:
         for i in range(self.num_nodes+1):
             for j in range(self.num_nodes+1):
                 if self.flowlet_length[i][j] != 0:
+                    for ident in self.flowlet_packet_ids[i][j]:
+                        assert(self.requests[ident-1][0] == ident)
+                        self.requests[ident-1].append(self.flowlet_length[i][j])
+
                     self.acc_flowlet_length[i][j] += self.flowlet_length[i][j]
                     self.flowlet_count[i][j] += 1
                     self.flowlet_length[i][j] = 0
+                    self.flowlet_packet_ids[i][j] = []
 
     def generate_next_request(self, last_packet_flag):
         # Always operate in on periods
@@ -102,32 +112,30 @@ class InputGen:
             self.flowlet_request_time[src][dest] = prediction_time
 
         self.flowlet_length[src][dest] += 1
+        self.flowlet_packet_ids[src][dest].append(self.id)
 
-        pckt = (self.id, self.current_time, src, dest, 1, prediction_time, self.period_idx) 
+        pckt = [self.id, self.current_time, src, dest, 1, prediction_time, self.period_idx]
 
+        flag = False
         if jump_time != 0 or last_packet_flag:
+            flag = True
             self.current_time = jump_time
             # Setting the id to the next on period
             self.period_idx += 2
-            self.reset_flowlet_request_times()
-            self.acc_reset_flowlet_length_counter()
-
-        return pckt
+        return pckt, flag
 
     def generate_requests(self, timeslot):
-        requests = []
-        print "Generator params: arr_rate", self.mean_arrival_rate, "req_size", self.mean_size
+        self.requests = []
+        print "Generator params: arr_rate:", self.mean_arrival_rate, "num_nodes:", self.num_nodes
         while self.id < self.max_requests:
             last_packet_flag = (self.id == self.max_requests-1)
-            new_request = self.generate_next_request(last_packet_flag)
+            new_request, ret_flag = self.generate_next_request(last_packet_flag)
             assert(new_request[4] == 1)
-            requests.append(new_request)
-
-        
-            #for i in range(new_request[4]):
-            #    nxt_packet = (new_request[0], new_request[1] + timeslot*i, new_request[2], new_request[3], i, new_request[4])
-            #    requests.append(nxt_packet)
-        return requests
+            self.requests.append(new_request)
+            if ret_flag:
+                self.reset_flowlet_request_times()
+                self.acc_reset_flowlet_length_counter()
+        return self.requests
 
     def check_stats(self, reqArray):
         last_arr_time = 0
