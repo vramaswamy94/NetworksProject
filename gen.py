@@ -9,8 +9,8 @@ import math
 # (id, time_slot, 
 ##
 
-ON_PERIOD_FACTOR = 5000
-OFF_PERIOD_FACTOR = 10
+ON_PERIOD_FACTOR = 7.5
+OFF_PERIOD_FACTOR = 10 # junk
 
 class InputGen:
     
@@ -30,7 +30,7 @@ class InputGen:
         else:
             self.iats_list = numpy.random.lognormal(math.log(self.req_iat), 1, max_requests)
        
-        self.on_period_durations = numpy.random.lognormal(math.log(self.req_iat*ON_PERIOD_FACTOR), 1, max_requests)
+        self.on_period_durations = numpy.random.lognormal(ON_PERIOD_FACTOR, 1, max_requests)
         self.off_period_durations = numpy.random.lognormal(math.log(self.req_iat*OFF_PERIOD_FACTOR), 1, max_requests)
         # generating max_requests on/off periods is overkill
 
@@ -74,11 +74,13 @@ class InputGen:
         for i in range(self.num_nodes+1):
             for j in range(self.num_nodes+1):
                 if self.flowlet_length[i][j] != 0:
+                    saved_count = self.flowlet_length[i][j]
                     for ident in self.flowlet_packet_ids[i][j]:
                         assert(self.requests[ident-1][0] == ident)
                         self.requests[ident-1].append(self.flowlet_length[i][j])
+                        self.flowlet_length[i][j] -= 1
 
-                    self.acc_flowlet_length[i][j] += self.flowlet_length[i][j]
+                    self.acc_flowlet_length[i][j] += saved_count
                     self.flowlet_count[i][j] += 1
                     self.flowlet_length[i][j] = 0
                     self.flowlet_packet_ids[i][j] = []
@@ -119,7 +121,7 @@ class InputGen:
         flag = False
         if jump_time != 0 or last_packet_flag:
             flag = True
-            self.current_time = jump_time
+            #self.current_time = jump_time
             # Setting the id to the next on period
             self.period_idx += 2
         return pckt, flag
@@ -174,7 +176,7 @@ class InputGen:
 def convert_to_request_objects(reqArray):
     reqObjs = []
     for i in range(len(reqArray)):
-        reqObjs.append(Request(reqArray[i][0], reqArray[i][2], reqArray[i][3], reqArray[i][4], reqArray[i][5], reqArray[i][1]))
+        reqObjs.append(Request(reqArray[i][0], reqArray[i][2], reqArray[i][3], reqArray[i][4], reqArray[i][5], reqArray[i][1], reqArray[i][7]))
     return reqObjs
 
 def generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot):

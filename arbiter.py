@@ -58,37 +58,70 @@ def arbiter_iter(input_requests, current_time, timeslot, num_nodes, saved_idx, i
     admitted_queue_size = admittedQ.qsize()
     while not admittedQ.empty():
         creq = admittedQ.get()
-        stats[creq.id]["admitted_time"] = current_time + timeslot
+        stats[creq.id]["admitted_time"] = current_time + 4 * timeslot
         stats[creq.id]["ready_time"] = creq.ready
         stats[creq.id]["req_time"] = creq.req
         assert(stats[creq.id]["admitted_time"] >= stats[creq.id]["ready_time"])
     return backlogQ, saved_idx, admitted_queue_size
 
-def priority_arbiter_iter(pQ, current_time, timeslot, num_nodes, inp2FP, fairness_array):
-    tmp_list = []
+def priority_arbiter_iter(pQ, current_time, timeslot, num_nodes, inp2FP, fairness_array, fairness_policy):
+    ready_list = []
     while not pQ.empty():
         queue_obj = pQ.get()
         creq = queue_obj[1]
-        if creq.ready < current_time + timeslot:
-            tmp_list.append([creq, fairness_array[creq.src * (num_nodes+1) + creq.dest]])
+        if creq.ready < current_time + 2 * timeslot:
+            ready_list.append(creq)
         else:
             pQ.put(queue_obj)
             break
    
-    tmp_list_sorted = sorted(tmp_list, key=itemgetter(1), reverse=False)
-    for i in range(len(tmp_list_sorted)):
-        inp2FP.put(tmp_list_sorted[i][0])
-
+    if fairness_policy == "minmax":
+        tmp_list = []
+        for item in ready_list:
+            tmp_list.append([item, fairness_array[item.src * (num_nodes + 1) + item.dest]])
+        tmp_list_sorted = sorted(tmp_list, key=itemgetter(1), reverse=False)
+        for i in range(len(tmp_list_sorted)):
+            inp2FP.put(tmp_list_sorted[i][0])
+    
+    elif fairness_policy == "reqtime":
+        tmp_list = []
+        while not inp2FP.empty():
+            creq = inp2FP.get()
+            tmp_list.append([creq, creq.req])
+        for item in ready_list:
+            tmp_list.append([item, item.req])
+        tmp_list_sorted = sorted(tmp_list, key=itemgetter(1), reverse=False)
+        for i in range(len(tmp_list_sorted)):
+            inp2FP.put(tmp_list_sorted[i][0])
+    
+    elif fairness_policy == "sjf":
+        tmp_list = []
+        while not inp2FP.empty():
+            creq = inp2FP.get()
+            tmp_list.append([creq, creq.flowlet_size])
+        for item in ready_list:
+            tmp_list.append([item, item.flowlet_size])
+        tmp_list_sorted = sorted(tmp_list, key=itemgetter(1), reverse=False)
+        for i in range(len(tmp_list_sorted)):
+            inp2FP.put(tmp_list_sorted[i][0])
+        
     admittedQ, backlogQ = Matching(inp2FP, num_nodes, False)
     admitted_queue_size = admittedQ.qsize()
 
     while not admittedQ.empty():
         creq = admittedQ.get()
-        fairness_array[creq.src * (num_nodes+1) + creq.dest] = current_time 
+        stats[creq.id]["admitted_time"] = current_time + 3 * timeslot
+        stats[creq.id]["ready_time"] = creq.ready
+        stats[creq.id]["req_time"] = creq.req
+        assert(stats[creq.id]["admitted_time"] >= stats[creq.id]["ready_time"])
+
+        if fairness_policy == "minmax":
+            fairness_array[creq.src * (num_nodes+1) + creq.dest] = current_time 
+
 
     return backlogQ, pQ, admitted_queue_size, fairness_array
 
-def priority_arbiter(request_objs, timeslot, num_nodes):
+def priority_arbiter(request_objs, timeslot, num_nodes, fairness_policy):
     pQ = PriorityQueue()
     saved_idx = 0
     current_time = 0
@@ -102,7 +135,7 @@ def priority_arbiter(request_objs, timeslot, num_nodes):
             saved_idx += 1
         else:
             break
-    backlogQ, pQ, admitted_queue_size, fairness_array = priority_arbiter_iter(pQ, current_time, timeslot, num_nodes, Queue(), fairness_array)
+    backlogQ, pQ, admitted_queue_size, fairness_array = priority_arbiter_iter(pQ, current_time, timeslot, num_nodes, Queue(), fairness_array, fairness_policy)
     current_time += timeslot
     sum_admitted_cnt += admitted_queue_size
     
@@ -114,7 +147,7 @@ def priority_arbiter(request_objs, timeslot, num_nodes):
                 saved_idx += 1
             else:
                 break
-        backlogQ, pQ, admitted_queue_size, fairness_array = priority_arbiter_iter(pQ, current_time, timeslot, num_nodes, backlogQ, fairness_array)
+        backlogQ, pQ, admitted_queue_size, fairness_array = priority_arbiter_iter(pQ, current_time, timeslot, num_nodes, backlogQ, fairness_array, fairness_policy)
         current_time += timeslot
         sum_admitted_cnt += admitted_queue_size
         iter_cnt += 1
@@ -123,23 +156,25 @@ def priority_arbiter(request_objs, timeslot, num_nodes):
     assert(sum_admitted_cnt == len(request_objs))
 
 def main():
-    max_requests = 10000
-    num_nodes = 16
-    mean_arrival_rate = 1000
-    mean_size = 4 
+    num_nodes = 1024
+    max_requests = num_nodes*1000
+    mean_arrival_rate = 100
     mean_pred_delay = 10
     timeslot = 1
 
+    mean_size = 4 
 
     request_objs, request_list = generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot)
     max_requests = len(request_list)
     init_stats(max_requests)
-    arbiter(request_objs, timeslot, num_nodes)
-    #compute_wait_time()
+    arbiter(request_objs, timeslot, num_nodes) # Fastpass
+    compute_wait_time()
 
+    init_stats(max_requests)
     request_sorted_list = sorted(request_list, key=itemgetter(5), reverse=False)
     request_sorted_objs = convert_to_request_objects(request_sorted_list)
-    priority_arbiter(request_sorted_objs, timeslot, num_nodes)
+    priority_arbiter(request_sorted_objs, timeslot, num_nodes, "reqtime")
+    compute_wait_time()
 
 if __name__=="__main__":
     main()

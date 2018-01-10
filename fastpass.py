@@ -16,13 +16,13 @@ def Matching(request_queue, num_nodes, flowlet):
 			used_src[req.src]=True
 			used_dest[req.dest]=True
 			
-			req1 = Request(0, 0, 0, 0, 0, 0)
+			req1 = Request(0, 0, 0, 0, 0, 0, 0)
 			req1.copy(req)
 			#req1.size = 1
 
 			admitted.put(req1)
 			if flowlet:
-				req2 = Request(0, 0, 0, 0, 0, 0)
+				req2 = Request(0, 0, 0, 0, 0, 0, 0)
 				req2.copy(req)
 				req2.size = req2.size - 1
 				req2.ready = req2.ready + 1
