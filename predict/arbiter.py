@@ -173,10 +173,12 @@ def predict_arbiter_iter(backlog_predictQ, backlog_actualQ, usage, fairness_arra
 			backlog_actualQ.put(req)
 	return backlog_predictQ, backlog_actualQ, admitted_array, admitted_queue_size, saved_idx, fairness_array, usage, pred_num
 
-def predict_arbiter(request_objs, timeslot, num_nodes, interval, scale):
+def predict_arbiter(request_objs, timeslot, num_nodes, interval, scale, basic):
     current_time=0
     fairness_array = [0]*(num_nodes+1)*(num_nodes+1)
     usage= [0] *(num_nodes+1)*(num_nodes+1)
+    
+    #initially, just assign all src-dest pairs with 1
     pred_demand = predictor_core(usage, scale, num_nodes, interval)
     predQ = make_request_queue(pred_demand, current_time, num_nodes)
     pred_num=0
@@ -189,7 +191,27 @@ def predict_arbiter(request_objs, timeslot, num_nodes, interval, scale):
     iter_cnt = 1
     current_time = 1    
     while True:
-        if iter_cnt%interval ==0:
+        if basic:
+            sum_predict = 0
+            sum_request = 0
+            extra_pred = 0
+            for i in range(num_nodes+1):
+                for j in range(num_nodes+1):
+                    sum_request+=usage[i*(num_nodes+1)+j]
+                    if (usage[i*(num_nodes+1)+j] <= pred_demand[i*(num_nodes+1)+j]):
+                        sum_predict+= usage[i*(num_nodes+1)+j]
+                        extra_pred+= (pred_demand[i*(num_nodes+1)+j] - usage[i*(num_nodes+1)+j])
+                    else:
+                        sum_predict+= pred_demand[i*(num_nodes+1)+j]
+            
+            print "Predicted/Actual: ", sum_predict, "/", sum_request, "Extra: ", (extra_pred)
+            pred_demand = []
+            for i in range(len(usage)):
+                pred_demand.append(usage[i])
+            usage = [0]*(num_nodes+1)*(num_nodes+1)
+            backlog_predictQ = make_request_queue(pred_demand, current_time, num_nodes)
+        
+        elif iter_cnt%interval ==0:
             sum_predict = 0
             sum_request = 0
             extra_pred = 0
@@ -205,6 +227,7 @@ def predict_arbiter(request_objs, timeslot, num_nodes, interval, scale):
             print "Predicted/Actual: ", sum_predict, "/", sum_request, "Extra: ", extra_pred
             pred_demand = predictor_core(usage, scale, num_nodes, interval)
             backlog_predictQ = make_request_queue(pred_demand, current_time, num_nodes)
+            usage = [0]*(num_nodes+1)*(num_nodes+1)
 		
         backlog_predictQ, backlog_actualQ, admit_array, admit_size, saved_idx, fairness_array, usage, pred_num = predict_arbiter_iter(backlog_predictQ, backlog_actualQ, usage, fairness_array, timeslot, current_time, num_nodes, saved_idx, request_objs, admit_array, pred_num)
 		#print backlog_predictQ.qsize(), backlog_actualQ.qsize(), admit_size
@@ -219,13 +242,14 @@ def predict_arbiter(request_objs, timeslot, num_nodes, interval, scale):
     # print "PredictedL ", pred_num	
 
 
+
 def main():
     max_requests = 1000
     num_nodes = 16
     mean_arrival_rate = 20
     mean_size = 1 
     mean_pred_delay = 1
-    timeslot = 1
+    timeslot = 10
 
     request_objs, request_list = generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot)
     max_requests = len(request_list)
@@ -237,8 +261,9 @@ def main():
     request_sorted_objs = convert_to_request_objects(request_sorted_list)
     priority_arbiter(request_sorted_objs, timeslot, num_nodes)
 
-    predict_arbiter(request_objs, timeslot,num_nodes, 10, 1.0)
+    predict_arbiter(request_objs, timeslot,num_nodes, 10, 1.0, False)
 
+    predict_arbiter(request_objs, timeslot,num_nodes, 10, 1.0, True)
 if __name__=="__main__":
     main()
 
