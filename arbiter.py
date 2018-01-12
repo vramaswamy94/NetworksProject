@@ -10,23 +10,51 @@ numpy.random.seed(234231)
 
 stats = {}
 
-def init_stats(max_requests):
-    for i in range(max_requests):
-        stats[i+1] = {}
+def main():
+    num_nodes = 64
+    max_requests = num_nodes*1000
+    mean_arrival_rate = 150
+    mean_pred_delay = 10
+    timeslot = 1
 
-def compute_wait_time():
-    waits = []
-    for i in stats.keys():
-        waits.append(stats[i]["admitted_time"] - stats[i]["ready_time"])
-    average_wait = sum(waits)/len(stats.keys())
-    max_wait = max(waits)
-    min_wait = min(waits)
-    print "Wait Time: Min", "%0.2f" % min_wait, "Avg.", "%0.2f" % average_wait, "Max", "%0.2f" % max_wait
+    mean_size = 4 
 
-def print_queue(q):
-    while not q.empty():
-        item = q.get()
-        item.print_request()
+    request_objs, request_list = generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot)
+    max_requests = len(request_list)
+
+    print "baseline"
+    init_stats(max_requests)
+    arbiter(request_objs, timeslot, num_nodes) # Fastpass
+    compute_wait_time()
+    compute_flowlet_stats(request_list, num_nodes)
+
+    fairness = "minmax"
+    print fairness
+    init_stats(max_requests)
+    request_sorted_list = sorted(request_list, key=itemgetter(5), reverse=False)
+    request_sorted_objs = convert_to_request_objects(request_sorted_list)
+    priority_arbiter(request_sorted_objs, timeslot, num_nodes, fairness)
+    compute_wait_time()
+    compute_flowlet_stats(request_list, num_nodes)
+
+    fairness = "reqtime"
+    print fairness
+    init_stats(max_requests)
+    request_sorted_list = sorted(request_list, key=itemgetter(5), reverse=False)
+    request_sorted_objs = convert_to_request_objects(request_sorted_list)
+    priority_arbiter(request_sorted_objs, timeslot, num_nodes, fairness)
+    compute_wait_time()
+    compute_flowlet_stats(request_list, num_nodes)
+
+    fairness = "sjf"
+    print fairness
+    init_stats(max_requests)
+    request_sorted_list = sorted(request_list, key=itemgetter(5), reverse=False)
+    request_sorted_objs = convert_to_request_objects(request_sorted_list)
+    priority_arbiter(request_sorted_objs, timeslot, num_nodes, fairness)
+    compute_wait_time()
+    compute_flowlet_stats(request_list, num_nodes)
+
 
 def arbiter(request_objs, timeslot, num_nodes):
     backlogQ, saved_idx, sum_admitted_cnt = arbiter_iter(request_objs, 0, timeslot, num_nodes, 0, Queue())
@@ -155,26 +183,60 @@ def priority_arbiter(request_objs, timeslot, num_nodes, fairness_policy):
     print "Iterations:", iter_cnt 
     assert(sum_admitted_cnt == len(request_objs))
 
-def main():
-    num_nodes = 1024
-    max_requests = num_nodes*1000
-    mean_arrival_rate = 100
-    mean_pred_delay = 10
-    timeslot = 1
+def init_stats(max_requests):
+    for i in range(max_requests):
+        stats[i+1] = {}
 
-    mean_size = 4 
+def compute_wait_time():
+    waits = []
+    for i in stats.keys():
+        waits.append(stats[i]["admitted_time"] - stats[i]["ready_time"])
+    average_wait = sum(waits)/len(stats.keys())
+    max_wait = max(waits)
+    min_wait = min(waits)
+    print "Wait Time: Min", "%0.2f" % min_wait, "Avg.", "%0.2f" % average_wait, "Max", "%0.2f" % max_wait
 
-    request_objs, request_list = generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot)
-    max_requests = len(request_list)
-    init_stats(max_requests)
-    arbiter(request_objs, timeslot, num_nodes) # Fastpass
-    compute_wait_time()
+def gen_3d_stats_array(x, y, z, val):
+    arr = {}
+    for i in range(x):
+        arr[i] = {}
+        for j in range(y):
+            arr[i][j] = {}
+            for k in range(z):
+                arr[i][j][k] = val
+    return arr
 
-    init_stats(max_requests)
-    request_sorted_list = sorted(request_list, key=itemgetter(5), reverse=False)
-    request_sorted_objs = convert_to_request_objects(request_sorted_list)
-    priority_arbiter(request_sorted_objs, timeslot, num_nodes, "reqtime")
-    compute_wait_time()
+def compute_flowlet_stats(request_list, num_nodes):
+    on_periods = request_list[-1][6]/2 + 1
+    fl_first_pkt_ready_time = gen_3d_stats_array(num_nodes, num_nodes, on_periods, float('inf')) 
+    fl_last_pkt_admitted_time = gen_3d_stats_array(num_nodes, num_nodes, on_periods, -float('inf')) 
+    fl_wait_time = gen_3d_stats_array(num_nodes, num_nodes, on_periods, -1)
+    
+    for i in stats.keys():
+        reqid = i
+        pckt = request_list[reqid-1]
+        assert(pckt[0] == reqid)
+        src = pckt[2]-1
+        dest = pckt[3]-1
+        period = pckt[6]/2
+
+        fl_first_pkt_ready_time[src][dest][period] = min(fl_first_pkt_ready_time[src][dest][period], stats[i]["ready_time"])
+        fl_last_pkt_admitted_time[src][dest][period]  = max(fl_last_pkt_admitted_time[src][dest][period], stats[i]["admitted_time"])
+        fl_wait_time[src][dest][period] = fl_last_pkt_admitted_time[src][dest][period] - fl_first_pkt_ready_time[src][dest][period]
+
+    tmp = []
+    for i in range(num_nodes):
+        for j in range(num_nodes):
+            for k in range(on_periods):
+                if fl_wait_time[i][j][k] != -1:
+                    tmp.append(fl_wait_time[i][j][k])
+    
+    print "Flowlet Transmission Time: Min", "%0.2f" % min(tmp), "Avg.", "%0.2f" % numpy.mean(tmp), "Max", "%0.2f" % max(tmp)
+def print_queue(q):
+    while not q.empty():
+        item = q.get()
+        item.print_request()
+
 
 if __name__=="__main__":
     main()
