@@ -7,6 +7,9 @@ from operator import itemgetter
 
 stats = {}
 
+pred_accuracy = []
+extra = []
+
 def init_stats(max_requests):
     for i in range(max_requests):
         stats[i+1] = {}
@@ -224,7 +227,11 @@ def predict_arbiter(request_objs, timeslot, num_nodes, interval, scale, basic):
                     else:
                         sum_predict+= pred_demand[i*(num_nodes+1)+j]
             
-            print "Predicted/Actual: ", sum_predict, "/", sum_request, "Extra: ", extra_pred
+            #print "Predicted/Actual: ", float(sum_predict)/float(sum_request), "Extra: ", extra_pred
+            if sum_request!=0:
+                print "Predicted/Actual: ", sum_predict, "/", sum_request, float(sum_predict)/float(sum_request), "Extra: ", extra_pred
+                pred_accuracy.append(float(sum_predict)/float(sum_request))
+                extra.append(float(extra_pred)/float(sum_request))
             pred_demand = predictor_core(usage, scale, num_nodes, interval)
             backlog_predictQ = make_request_queue(pred_demand, current_time, num_nodes)
             usage = [0]*(num_nodes+1)*(num_nodes+1)
@@ -234,9 +241,10 @@ def predict_arbiter(request_objs, timeslot, num_nodes, interval, scale, basic):
 		
         iter_cnt+=1
         current_time+=1
-        if (backlog_actualQ.empty() and saved_idx== len(request_objs)):
+        #if (backlog_actualQ.empty() and saved_idx== len(request_objs)):
+        #    break
+        if saved_idx==len(request_objs) or (iter_cnt > 15*interval):
             break
-
 
     print "Iterations: ", iter_cnt
     # print "PredictedL ", pred_num	
@@ -244,26 +252,36 @@ def predict_arbiter(request_objs, timeslot, num_nodes, interval, scale, basic):
 
 
 def main():
-    max_requests = 1000
-    num_nodes = 16
-    mean_arrival_rate = 20
+    num_nodes = 32
+    max_requests = 70000
+    mean_arrival_rate = 240
     mean_size = 1 
     mean_pred_delay = 1
-    timeslot = 10
+    timeslot = 1
 
     request_objs, request_list = generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot)
     max_requests = len(request_list)
-    init_stats(max_requests)
-    arbiter(request_objs, timeslot, num_nodes)
+    #init_stats(max_requests)
+    #arbiter(request_objs, timeslot, num_nodes)
     #compute_wait_time()
 
     request_sorted_list = sorted(request_list, key=itemgetter(5), reverse=False)
     request_sorted_objs = convert_to_request_objects(request_sorted_list)
-    priority_arbiter(request_sorted_objs, timeslot, num_nodes)
+    # priority_arbiter(request_sorted_objs, timeslot, num_nodes)
+    f = open("AvgPredAcc", "w") 
+    k=10
+    while k<80: 
+        predict_arbiter(request_objs, timeslot,num_nodes, k, 1.0, False)
+        avg = (sum(pred_accuracy) -pred_accuracy[0] -  pred_accuracy[len(pred_accuracy)-1])/(len(pred_accuracy)-2)
+        avg_ext = float(sum(extra) - extra[len(extra)-1] - extra[0])/float(len(extra) - 2)
+        f.write(str(k) + "\t" + str(avg) + "\t" + str(avg_ext) + "\n")
+        del pred_accuracy[:]
+        del extra[:]
+        k+=4
 
-    predict_arbiter(request_objs, timeslot,num_nodes, 10, 1.0, False)
+    f.close()
 
-    predict_arbiter(request_objs, timeslot,num_nodes, 10, 1.0, True)
+    #predict_arbiter(request_objs, timeslot,num_nodes, 10, 1.0, True)
 if __name__=="__main__":
     main()
 

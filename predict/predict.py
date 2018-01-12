@@ -8,10 +8,10 @@ def predictor_core(usage, scale, num_nodes, interval):
 		for j in range(1,num_nodes + 1):
 			if (usage[i*(num_nodes+1) + j] < 1):
 				demand[i*(num_nodes + 1) + j] = 1 # assuming min demand is 1 in n timeslots
-			elif (usage[i*(num_nodes + 1) + j] * scale > interval):
-				demand[i*(num_nodes+1)+j]= interval # max is n in n time slots
+			#elif (usage[i*(num_nodes + 1) + j] * scale > interval):
+			#	demand[i*(num_nodes+1)+j]= interval # max is n in n time slots
 			else:
-				demand[i*(num_nodes+1)+j] = int(usage[i*(num_nodes+1)+j]*scale)+1
+				demand[i*(num_nodes+1)+j] = int(usage[i*(num_nodes+1)+j]*scale) 
 	
 	return demand
 
