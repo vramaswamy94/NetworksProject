@@ -237,6 +237,33 @@ def print_queue(q):
         item = q.get()
         item.print_request()
 
+def vary_arrival_rate():
+    for num_nodes in [16,32,64,128,256]:
+        max_requests = num_nodes*500
+        mean_pred_delay = 10
+        timeslot = 1
+        
+        mean_size = 1           #not used
+
+        out_file = "AvgWaitTime_Poisson_" + str(num_nodes)
+        f = open(out_file, "w")
+        for arrival_factor in range(1,6):
+            
+            mean_arrival_rate = arrival_factor*num_nodes
+            request_objs, request_list = generate_input(max_requests, num_nodes, mean_arrival_rate, mean_size, mean_pred_delay, timeslot)
+            max_requests = len(request_list)
+            init_stats(max_requests)
+            arbiter(request_objs, timeslot, num_nodes) # Fastpass
+            fp_avg, fp_max, fp_min = compute_wait_time()
+
+            init_stats(max_requests)
+            request_sorted_list = sorted(request_list, key=itemgetter(5), reverse=False)
+            request_sorted_objs = convert_to_request_objects(request_sorted_list)
+            priority_arbiter(request_sorted_objs, timeslot, num_nodes, "minmax")
+            req_avg, req_max, req_min = compute_wait_time()
+            f.write(str(mean_arrival_rate) + "\t" +  str(fp_min) + "\t" + str(req_min) + "\t"+ str(fp_avg) + "\t" + str(req_avg)+"\t"+  str(fp_max) + "\t" + str(req_max)+ "\n")
+
+        f.close()
 
 if __name__=="__main__":
     main()
